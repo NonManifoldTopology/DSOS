@@ -78,6 +78,15 @@ namespace Dsos
 
 		static List<OpenStudio::BuildingStory^>^ CreateBuildingStories(OpenStudio::Model^ osModel, int numFloors);
 
+		/// <summary>
+		/// 
+		/// </summary>
+		/// <param name="face"></param>
+		/// <param name="apertureDesign"></param>
+		/// <param name="numEdgeSamples"></param>
+		/// <returns></returns>
+		static Face^ ApplyAperture(Face^ face, Face^ apertureDesign, int numEdgeSamples);
+
 	private:
 		DsosUtility() {}
 
