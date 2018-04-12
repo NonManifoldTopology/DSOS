@@ -75,22 +75,22 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <OutDir>$(SolutionDir)output\$(Platform)\$(Configuration)\</OutDir>
+    <OutDir>$(SolutionDir)output</OutDir>
     <IntDir>$(ProjectDir)obj\$(Platform)\$(Configuration)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <OutDir>$(SolutionDir)output\$(Platform)\$(Configuration)\</OutDir>
+    <OutDir>$(SolutionDir)output</OutDir>
     <IntDir>$(ProjectDir)obj\$(Platform)\$(Configuration)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
-    <OutDir>$(SolutionDir)output\$(Platform)\$(Configuration)\</OutDir>
+    <OutDir>$(SolutionDir)output</OutDir>
     <IntDir>$(ProjectDir)obj\$(Platform)\$(Configuration)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <OutDir>$(SolutionDir)output\$(Platform)\$(Configuration)\</OutDir>
+    <OutDir>$(SolutionDir)output</OutDir>
     <IntDir>$(ProjectDir)obj\$(Platform)\$(Configuration)\</IntDir>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -103,6 +103,10 @@
     <Link>
       <AdditionalDependencies />
     </Link>
+    <PostBuildEvent>
+      <Command>copy references\TopoLogic\*.dll output
+copy references\OpenStudio-2.4.0\*dll output</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -114,6 +118,10 @@
     <Link>
       <AdditionalDependencies />
     </Link>
+    <PostBuildEvent>
+      <Command>copy references\TopoLogic\*.dll output
+copy references\OpenStudio-2.4.0\*dll output</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -124,6 +132,10 @@
     <Link>
       <AdditionalDependencies />
     </Link>
+    <PostBuildEvent>
+      <Command>copy references\TopoLogic\*.dll output
+copy references\OpenStudio-2.4.0\*dll output</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -134,6 +146,10 @@
     <Link>
       <AdditionalDependencies />
     </Link>
+    <PostBuildEvent>
+      <Command>copy references\TopoLogic\*.dll output
+copy references\OpenStudio-2.4.0\*dll output</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="include\DsosUtility.h" />
@@ -150,6 +166,7 @@
     </Reference>
     <Reference Include="OpenStudio">
       <HintPath>references\OpenStudio-2.4.0\OpenStudio.dll</HintPath>
+      <Private>false</Private>
     </Reference>
     <Reference Include="ProtoGeometry">
       <HintPath>references\Dynamo\ProtoGeometry.dll</HintPath>
@@ -157,6 +174,7 @@
     <Reference Include="System" />
     <Reference Include="TopoLogic">
       <HintPath>references\TopoLogic\TopoLogic.dll</HintPath>
+      <Private>false</Private>
     </Reference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
