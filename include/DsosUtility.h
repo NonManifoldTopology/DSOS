@@ -37,46 +37,27 @@ namespace Dsos
 		/// <param name="contextBuildings"></param>
 		/// <returns></returns>
 		static OpenStudio::Model^ BuildOsModel(
-			String^ osmTemplatePath,
+			[Autodesk::DesignScript::Runtime::DefaultArgument("null")] List<Cell^>^ contextBuildings,
+			CellComplex^ buildingCellComplex,
+			[Autodesk::DesignScript::Runtime::DefaultArgument("Commercial")] String^ buildingType,
+			[Autodesk::DesignScript::Runtime::DefaultArgument("Default Building")] String^ buildingName,
+			String^ spaceType,
+			double buildingHeight,
+			int numFloors,
+			List<double>^ floorLevels,
+			double glazingRatio,
 			String^ epwWeatherPath,
 			String^ ddyPath,
+			String^ osmTemplatePath,
 			String^ osmOutputPath,
-			CellComplex^ buildingCellComplex,
-			String^ buildingName,
-			String^ buildingType,
-			String^ spaceType,
-			double heatingTemp,
 			double coolingTemp,
-			double buildingHeight,
-			List<double>^ floorLevels,
-			int numFloors,
-			double glazingRatio,
-			[Autodesk::DesignScript::Runtime::DefaultArgument("null")] List<Cell^>^ contextBuildings);
+			double heatingTemp);
 
 		static void PerformEnergyAnalysis(String^ strOsmPath, String^ epwPathName, String^ oswPathName, String^ openStudioExePath);
 
 		static bool SaveModel(OpenStudio::Model^ osModel, String^ osmPathName);
 
 		static OpenStudio::Model^ GetModelFromTemplate(String^ osmTemplatePath, String^ epwWeatherPath, String^ ddyPath);
-
-		static OpenStudio::ThermalZone^ CreateThermalZone(OpenStudio::Model^ model, OpenStudio::Space^ space, double ceilingHeight, double heatingTemp, double coolingTemp);
-
-		static OpenStudio::BuildingStory^ AddBuildingStory(OpenStudio::Model^ model, int floorNumber);
-
-		static OpenStudio::Building^ ComputeBuilding(
-			OpenStudio::Model^ osModel,
-			String^ buildingName,
-			String^ buildingType,
-			double buildingHeight,
-			int numFloors,
-			String^ spaceType);
-		
-		
-		static OpenStudio::DefaultScheduleSet^ getDefaultScheduleSet(OpenStudio::Model^ model);
-
-		static OpenStudio::DefaultConstructionSet^ getDefaultConstructionSet(OpenStudio::Model^ model);
-
-		static List<OpenStudio::BuildingStory^>^ CreateBuildingStories(OpenStudio::Model^ osModel, int numFloors);
 
 		/// <summary>
 		/// 
@@ -91,6 +72,7 @@ namespace Dsos
 		DsosUtility() {}
 
 		static OpenStudio::Space^ AddSpace(
+			int spaceNumber,
 			Cell^ cell,
 			OpenStudio::Model^ osModel,
 			Autodesk::DesignScript::Geometry::Vector^ upVector,
@@ -104,6 +86,7 @@ namespace Dsos
 		static void AddShadingSurfaces(Cell^ buildingCell, OpenStudio::Model^ osModel);
 		
 		static OpenStudio::Surface^ AddSurface(
+			int surfaceNumber,
 			Face^ buildingFace,
 			OpenStudio::Point3dVector^ osFacePoints,
 			OpenStudio::Space^ osSpace,
@@ -123,15 +106,37 @@ namespace Dsos
 
 		static int AdjacentCellCount(Face^ buildingFace);
 
-		static int StoreyNumber(
+		static int StoryNumber(
 			Cell^ buildingCell,
 			double buildingHeight,
 			List<double>^ floorLevels
 		);
 
+		static OpenStudio::ThermalZone^ CreateThermalZone(OpenStudio::Model^ model, OpenStudio::Space^ space, double ceilingHeight, double heatingTemp, double coolingTemp);
+
+		static OpenStudio::BuildingStory^ AddBuildingStory(OpenStudio::Model^ model, int floorNumber);
+			
+		static OpenStudio::Building^ ComputeBuilding(
+			OpenStudio::Model^ osModel,
+			String^ buildingName,
+			String^ buildingType,
+			double buildingHeight,
+			int numFloors,
+			String^ spaceType);
+
+
+		static OpenStudio::DefaultScheduleSet^ getDefaultScheduleSet(OpenStudio::Model^ model);
+
+		static OpenStudio::DefaultConstructionSet^ getDefaultConstructionSet(OpenStudio::Model^ model);
+
+		static List<OpenStudio::BuildingStory^>^ CreateBuildingStories(OpenStudio::Model^ osModel, int numFloors);
+
+
 		static List<OpenStudio::BuildingStory^>^ buildingStories;
 		static OpenStudio::DefaultConstructionSet^ defaultConstructionSet;
 		static OpenStudio::DefaultScheduleSet^ defaultScheduleSet;
 
+		static int numOfApertures;
+		static int numOfAppliedApertures;
 	};
 }

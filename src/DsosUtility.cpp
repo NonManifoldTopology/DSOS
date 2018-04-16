@@ -16,29 +16,33 @@ namespace Dsos
 	}
 
 	OpenStudio::Model^ DsosUtility::BuildOsModel(
-		String^ osmTemplatePath, 
-		String^ epwWeatherPath, 
-		String^ ddyPath, 
-		String^ osmOutputPath, 
+		[Autodesk::DesignScript::Runtime::DefaultArgument("null")] List<Cell^>^ contextBuildings,
 		CellComplex^ buildingCellComplex,
-		String^ buildingName, 
-		String^ buildingType, 
-		String^ spaceType, 
-		double heatingTemp,
+		String^ buildingType,
+		String^ buildingName,
+		String^ spaceType,
+		double buildingHeight,
+		int numFloors,
+		List<double>^ floorLevels,
+		double glazingRatio,
+		String^ epwWeatherPath,
+		String^ ddyPath,
+		String^ osmTemplatePath,
+		String^ osmOutputPath,
 		double coolingTemp,
-		double buildingHeight, 
-		List<double>^ floorLevels, 
-		int numFloors, 
-		double glazingRatio, 
-		List<Cell^>^ contextBuildings)
+		double heatingTemp)
 	{
+		numOfApertures = 0;
+		numOfAppliedApertures = 0;
 		List<OpenStudio::Space^>^ osSpaces = gcnew List<OpenStudio::Space^>();
 		OpenStudio::Model^ osModel = GetModelFromTemplate(osmTemplatePath, epwWeatherPath, ddyPath);
 		OpenStudio::Building^ osBuilding = ComputeBuilding(osModel, buildingName, buildingType, buildingHeight, numFloors, spaceType);
 		List<Cell^>^ pBuildingCells = buildingCellComplex->Cells();
+		int spaceNumber = 1;
 		for each(Cell^ buildingCell in pBuildingCells)
 		{
 			OpenStudio::Space^ osSpace = AddSpace(
+				spaceNumber,
 				buildingCell,
 				osModel,
 				Autodesk::DesignScript::Geometry::Vector::ZAxis(),
@@ -55,6 +59,7 @@ namespace Dsos
 			}
 
 			osSpaces->Add(osSpace);
+			spaceNumber++;
 		}
 
 		if (contextBuildings != nullptr)
@@ -143,7 +148,8 @@ namespace Dsos
         
 		// Create a thermal zone for the space
 		OpenStudio::ThermalZone^ osThermalZone = gcnew OpenStudio::ThermalZone(model);
-		osThermalZone->setName(space->name() + "_TZ");
+		osThermalZone->setName(space->name()->get() + "_THERMAL_ZONE");
+		String^ name = osThermalZone->name()->get();
 		osThermalZone->setUseIdealAirLoads(true);
 		osThermalZone->setCeilingHeight(ceilingHeight);
 		osThermalZone->setVolume(space->volume());
@@ -219,7 +225,6 @@ namespace Dsos
 		for (int i = 0; i < numFloors; i++)
 		{
 			osBuildingStories->Add(AddBuildingStory(osModel, (i + 1)));
-
 		}
 		return osBuildingStories;
 	}
@@ -330,7 +335,8 @@ namespace Dsos
 	}
 
 	OpenStudio::Space^ DsosUtility::AddSpace(
-		Cell^ cell, 
+		int spaceNumber, 
+		Cell^ cell,
 		OpenStudio::Model^ osModel, 
 		Autodesk::DesignScript::Geometry::Vector^ upVector, 
 		double buildingHeight, 
@@ -340,7 +346,6 @@ namespace Dsos
 		double coolingTemp)
 	{
 		OpenStudio::Space^ osSpace = gcnew OpenStudio::Space(osModel);
-		osSpace->setName("Storey"); // todo
 
 		List<Face^>^ faces = cell->Faces();
 		List<OpenStudio::Point3dVector^>^ facePointsList = gcnew List<OpenStudio::Point3dVector^>();
@@ -352,12 +357,13 @@ namespace Dsos
 
 		for (int i = 0; i < faces->Count; ++i)
 		{
-			AddSurface(faces[i], facePointsList[i], osSpace, osModel, upVector, glazingRatio);
+			AddSurface(i+1, faces[i], facePointsList[i], osSpace, osModel, upVector, glazingRatio);
 		}
 
-		int storeyNumber = StoreyNumber(cell, buildingHeight, floorLevels);
-		OpenStudio::BuildingStory^ buildingStorey = buildingStories[storeyNumber];
-		osSpace->setBuildingStory(buildingStorey);
+		int storyNumber = StoryNumber(cell, buildingHeight, floorLevels);
+		OpenStudio::BuildingStory^ buildingStory = buildingStories[storyNumber];
+		osSpace->setName(buildingStory->name()->get() + "_SPACE_" + spaceNumber.ToString());
+		osSpace->setBuildingStory(buildingStory);
 		osSpace->setDefaultConstructionSet(getDefaultConstructionSet(osModel));
 		osSpace->setDefaultScheduleSet(getDefaultScheduleSet(osModel));
 
@@ -382,6 +388,7 @@ namespace Dsos
 		Autodesk::DesignScript::Geometry::BoundingBox^ boundingBox =
 			Autodesk::DesignScript::Geometry::BoundingBox::ByGeometry(solids);
 		double ceilingHeight = Math::Abs(boundingBox->MaxPoint->Z - boundingBox->MinPoint->Z);
+
 		OpenStudio::ThermalZone^ thermalZone = CreateThermalZone(osModel, osSpace, ceilingHeight, heatingTemp, coolingTemp);
 
 		return osSpace;
@@ -392,7 +399,7 @@ namespace Dsos
 	{
 		OpenStudio::ShadingSurfaceGroup^ osShadingGroup = gcnew OpenStudio::ShadingSurfaceGroup(osModel);
 		List<Face^>^ faceList = buildingCell->Faces();
-		int faceIndex = 0;
+		int faceIndex = 1;
 		for each(Face^ face in faceList)
 		{
 			List<Vertex^>^ vertices = face->Vertices();
@@ -416,6 +423,7 @@ namespace Dsos
 	}
 
 	OpenStudio::Surface^ DsosUtility::AddSurface(
+		int surfaceNumber,
 		Face^ buildingFace,
 		OpenStudio::Point3dVector^ osFacePoints,
 		OpenStudio::Space^ osSpace,
@@ -476,8 +484,8 @@ namespace Dsos
 		OpenStudio::Surface^ osSurface = gcnew OpenStudio::Surface(osFacePoints, osModel);
 		osSurface->setSpace(osSpace);
 		OpenStudio::OptionalString^ osSpaceOptionalString = osSpace->name();
-		String^ spaceName = osSpaceOptionalString->__str__();
-		String^ surfaceName = spaceName + "_SURFACE_" + buildingFace->ToString();
+		String^ spaceName = osSpace->name()->get();
+		String^ surfaceName = osSpace->name()->get() + "_SURFACE_" + surfaceNumber.ToString();
 		osSurface->setName(surfaceName);
 
 		int adjCount = AdjacentCellCount(buildingFace);
@@ -593,7 +601,54 @@ namespace Dsos
 			}
 			else
 			{
-				osSurface->setWindowToWallRatio(glazingRatio, 900.0, true);
+				//osSurface->setWindowToWallRatio(glazingRatio, 900.0, true);
+
+				// Use the surface apertures
+				List<Topology^>^ pApertures = buildingFace->ContentsV2(true);
+				for each(Topology^ pAperture in pApertures)
+				{
+					Face^ pFaceAperture = dynamic_cast<Face^>(pAperture);
+					if (pFaceAperture == nullptr)
+					{
+						continue;
+					}
+					Wire^ pApertureWire = pFaceAperture->OuterBoundary();
+					List<Vertex^>^ pApertureVertices = pApertureWire->Vertices();
+					pApertureVertices->Reverse();
+					OpenStudio::Point3dVector^ osWindowFacePoints = gcnew OpenStudio::Point3dVector();
+					for each(Vertex^ pApertureVertex in pApertureVertices)
+					{
+						Object^ pVertexGeometry = pApertureVertex->Geometry;
+						Autodesk::DesignScript::Geometry::Point^ pAperturePoint =
+							dynamic_cast<Autodesk::DesignScript::Geometry::Point^>(pVertexGeometry);
+						if (pAperturePoint == nullptr)
+						{
+							continue;
+						}
+						OpenStudio::Point3d^ osPoint = gcnew OpenStudio::Point3d(
+							pAperturePoint->X,
+							pAperturePoint->Y,
+							pAperturePoint->Z);
+						osWindowFacePoints->Add(osPoint);
+					}
+
+					numOfApertures++;
+
+					OpenStudio::SubSurface^ osWindowSubSurface = gcnew OpenStudio::SubSurface(osWindowFacePoints, osModel);
+					double grossSubsurfaceArea = osWindowSubSurface->grossArea();
+					double netSubsurfaceArea = osWindowSubSurface->netArea();
+					double grossSurfaceArea = osSurface->grossArea();
+					double netSurfaceArea = osSurface->netArea();
+					if(grossSubsurfaceArea > 0.01)
+					{
+						osWindowSubSurface->setSubSurfaceType("FixedWindow");
+						bool result = osWindowSubSurface->setSurface(osSurface);
+						if (result)
+						{
+							numOfAppliedApertures++;
+						}
+					}
+				}
 			}
 		}
 
@@ -644,7 +699,10 @@ namespace Dsos
 
 	OpenStudio::Point3dVector^ DsosUtility::GetFacePoints(Face^ buildingFace)
 	{
-		List<Vertex^>^ vertices = buildingFace->Vertices();
+		Wire^ buildingOuterWire = buildingFace->OuterBoundary();
+		List<Vertex^>^ vertices = buildingOuterWire->Vertices();
+		// HACK
+		vertices->Reverse();
 		OpenStudio::Point3dVector^ osFacePoints = gcnew OpenStudio::Point3dVector();
 
 		for each(Vertex^ v in vertices)
@@ -709,7 +767,7 @@ namespace Dsos
 		return buildingFace->Cells()->Count;
 	}
 
-	int DsosUtility::StoreyNumber(Cell^ buildingCell, double buildingHeight, List<double>^ floorLevels)
+	int DsosUtility::StoryNumber(Cell^ buildingCell, double buildingHeight, List<double>^ floorLevels)
 	{
 		double volume = buildingCell->Volume();
 		Vertex^ centreOfMass = buildingCell->CenterOfMass();
