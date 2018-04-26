@@ -34,13 +34,14 @@ namespace Dsos
 	{
 		numOfApertures = 0;
 		numOfAppliedApertures = 0;
+		subsurfaceCounter = 1;
 		List<OpenStudio::Space^>^ osSpaces = gcnew List<OpenStudio::Space^>();
 		OpenStudio::Model^ osModel = GetModelFromTemplate(osmTemplatePath, epwWeatherPath, ddyPath);
 		OpenStudio::Building^ osBuilding = ComputeBuilding(osModel, buildingName, buildingType, buildingHeight, numFloors, spaceType);
 		List<Cell^>^ pBuildingCells = buildingCellComplex->Cells();
-		int spaceNumber = 1;
 		for each(Cell^ buildingCell in pBuildingCells)
 		{
+			int spaceNumber = 1;
 			OpenStudio::Space^ osSpace = AddSpace(
 				spaceNumber,
 				buildingCell,
@@ -59,7 +60,6 @@ namespace Dsos
 			}
 
 			osSpaces->Add(osSpace);
-			spaceNumber++;
 		}
 
 		if (contextBuildings != nullptr)
@@ -334,6 +334,92 @@ namespace Dsos
 		return face;
 	}
 
+	Face^ DsosUtility::ApplyApertureV2(Face ^ face, Face ^ apertureDesign, int numEdgeSamples)
+	{
+		if (numEdgeSamples <= 0)
+		{
+			throw gcnew Exception("numEdgeSamples must be positive.");
+		}
+		// 1. Convert the apertures and boundary as faces.
+		Wire^ pOuterApertureWire = apertureDesign->OuterBoundary();
+		List<Wire^>^ pApertureWires = apertureDesign->InnerBoundaries();
+
+		List<Face^>^ pFaces = gcnew List<Face^>();
+
+		// 2. For each wires, iterate through the edges, sample points, and map them to the 
+		for each(Wire^ pApertureWire in pApertureWires)
+		{
+			List<Edge^>^ pApertureEdges = pApertureWire->Edges();
+			List<Edge^>^ pMappedApertureEdges = gcnew List<Edge^>();
+
+			for each(Edge^ pApertureEdge in pApertureEdges)
+			{
+				List<Vertex^>^ pMappedSampleVertices = gcnew List<Vertex^>();
+				for (int i = 0; i < numEdgeSamples; ++i)
+				{
+					double t = (double)i / (double)(numEdgeSamples - 1);
+					if (t < 0.0)
+					{
+						t = 0.0;
+					}
+					else if (t > 1.0)
+					{
+						t = 1.0;
+					}
+
+					// Find the actual point on the edge
+					Vertex^ pSampleVertex = pApertureEdge->PointAtParameter(t);
+
+					// Find the UV-coordinate of the point on the aperture design
+					Autodesk::DesignScript::Geometry::UV^ pUV = apertureDesign->UVParameterAtPoint(pSampleVertex);
+					double checkedU = pUV->U, checkedV = pUV->V;
+					if (checkedU < 0.0)
+					{
+						checkedU = 0.0;
+					}
+					else if (checkedU > 1.0)
+					{
+						checkedU = 1.0;
+					}
+
+					if (checkedV < 0.0)
+					{
+						checkedV = 0.0;
+					}
+					else if (checkedV > 1.0)
+					{
+						checkedV = 1.0;
+					}
+
+					pUV = Autodesk::DesignScript::Geometry::UV::ByCoordinates(checkedU, checkedV);
+
+					// Find the point with the same UV-coordinate on the surface, add it to the list
+					Vertex^ pMappedSampleVertex = face->PointAtParameter(pUV);
+					pMappedSampleVertices->Add(pMappedSampleVertex);
+				}
+
+				// Interpolate the mapped vertices to an edge.
+				Edge^ pMappedApertureEdge = Edge::ByVertices(pMappedSampleVertices);
+				pMappedApertureEdges->Add(pMappedApertureEdge);
+			}
+
+			// Connect the mapped edges to a wire
+			Wire^ pMappedApertureWire = Wire::ByEdges(pMappedApertureEdges);
+
+			//// Use the wire to make a face on the same supporting surface as the input face's
+			Face^ pMappedApertureFace = face->Trim(pMappedApertureWire);
+			pFaces->Add(pMappedApertureFace);
+
+			// and attach it as an aperture to the face.
+			//Context^ pFaceContext = Context::ByTopologyParameters(face, 0.0, 0.0, 0.0);
+			//Aperture^ pMappedAperture = Aperture::ByTopologyContext(pMappedApertureFace, pFaceContext);
+			
+		}
+
+		// TODO: should return a copy
+		return face;
+	}
+
 	OpenStudio::Space^ DsosUtility::AddSpace(
 		int spaceNumber, 
 		Cell^ cell,
@@ -347,6 +433,13 @@ namespace Dsos
 	{
 		OpenStudio::Space^ osSpace = gcnew OpenStudio::Space(osModel);
 
+		int storyNumber = StoryNumber(cell, buildingHeight, floorLevels);
+		OpenStudio::BuildingStory^ buildingStory = buildingStories[storyNumber];
+		osSpace->setName(buildingStory->name()->get() + "_SPACE_" + spaceNumber.ToString());
+		osSpace->setBuildingStory(buildingStory);
+		osSpace->setDefaultConstructionSet(getDefaultConstructionSet(osModel));
+		osSpace->setDefaultScheduleSet(getDefaultScheduleSet(osModel));
+
 		List<Face^>^ faces = cell->Faces();
 		List<OpenStudio::Point3dVector^>^ facePointsList = gcnew List<OpenStudio::Point3dVector^>();
 		for each(Face^ face in faces)
@@ -357,15 +450,8 @@ namespace Dsos
 
 		for (int i = 0; i < faces->Count; ++i)
 		{
-			AddSurface(i+1, faces[i], facePointsList[i], osSpace, osModel, upVector, glazingRatio);
+			AddSurface(i+1, faces[i], cell, facePointsList[i], osSpace, osModel, upVector, glazingRatio);
 		}
-
-		int storyNumber = StoryNumber(cell, buildingHeight, floorLevels);
-		OpenStudio::BuildingStory^ buildingStory = buildingStories[storyNumber];
-		osSpace->setName(buildingStory->name()->get() + "_SPACE_" + spaceNumber.ToString());
-		osSpace->setBuildingStory(buildingStory);
-		osSpace->setDefaultConstructionSet(getDefaultConstructionSet(osModel));
-		osSpace->setDefaultScheduleSet(getDefaultScheduleSet(osModel));
 
 		// Get all space types
 		OpenStudio::SpaceTypeVector^ osSpaceTypes = osModel->getSpaceTypes();
@@ -425,6 +511,7 @@ namespace Dsos
 	OpenStudio::Surface^ DsosUtility::AddSurface(
 		int surfaceNumber,
 		Face^ buildingFace,
+		Cell^ buildingSpace,
 		OpenStudio::Point3dVector^ osFacePoints,
 		OpenStudio::Space^ osSpace,
 		OpenStudio::Model^ osModel,
@@ -479,7 +566,7 @@ namespace Dsos
 		} // while (osConstructionTypesEnumerator.MoveNext())
 
 		bool isUnderground = IsUnderground(buildingFace);
-		int faceType = FaceType(buildingFace, upVector);
+		FaceType faceType = CalculateFaceType(buildingFace, osFacePoints, buildingSpace, upVector);
 
 		OpenStudio::Surface^ osSurface = gcnew OpenStudio::Surface(osFacePoints, osModel);
 		osSurface->setSpace(osSpace);
@@ -487,10 +574,15 @@ namespace Dsos
 		String^ spaceName = osSpace->name()->get();
 		String^ surfaceName = osSpace->name()->get() + "_SURFACE_" + surfaceNumber.ToString();
 		osSurface->setName(surfaceName);
+		/*OpenStudio::Vector3d^ pSurfaceNormal = osSurface->outwardNormal();
+
+		double x = pSurfaceNormal->x();
+		double y = pSurfaceNormal->y();
+		double z = pSurfaceNormal->z();*/
 
 		int adjCount = AdjacentCellCount(buildingFace);
 
-		if ((faceType == 1) && (adjCount > 1))
+		if ((faceType == FACE_ROOFCEILING) && (adjCount > 1))
 		{
 
 			osSurface->setOutsideBoundaryCondition("Surface");
@@ -499,39 +591,93 @@ namespace Dsos
 			osSurface->setSunExposure("NoSun");
 			osSurface->setWindExposure("NoWind");
 		}
-		else if ((faceType == 1) && (adjCount < 2) && (!isUnderground))
+		else if ((faceType == FACE_ROOFCEILING) && (adjCount < 2) && (!isUnderground))
 		{
+			OpenStudio::Vector3d^ pSurfaceNormal = osSurface->outwardNormal();
+
+			double x = pSurfaceNormal->x();
+			double y = pSurfaceNormal->y();
+			double z = pSurfaceNormal->z();
+			pSurfaceNormal->normalize();
+			OpenStudio::Vector3d^ upVector = gcnew OpenStudio::Vector3d(0, 0, 1.0);
+			// If the normal does not point downward, flip it. Use dot product.
+			double dotProduct = pSurfaceNormal->dot(upVector);
+			if (dotProduct < 0.98)
+			{
+				OpenStudio::Point3dVector^ surfaceVertices = osSurface->vertices();
+				surfaceVertices->Reverse();
+				osSurface->setVertices(surfaceVertices);
+			}
 			osSurface->setOutsideBoundaryCondition("Outdoors");
 			osSurface->setSurfaceType("RoofCeiling");
 			osSurface->setConstruction(osExteriorRoofType);
 			osSurface->setSunExposure("SunExposed");
 			osSurface->setWindExposure("WindExposed");
 		}
-		else if ((faceType == 1) && (adjCount < 2) && isUnderground)
+		else if ((faceType == FACE_ROOFCEILING) && (adjCount < 2) && isUnderground)
 		{
+			OpenStudio::Vector3d^ pSurfaceNormal = osSurface->outwardNormal();
+
+			double x = pSurfaceNormal->x();
+			double y = pSurfaceNormal->y();
+			double z = pSurfaceNormal->z();
+			pSurfaceNormal->normalize();
+			OpenStudio::Vector3d^ upVector = gcnew OpenStudio::Vector3d(0, 0, 1.0);
+			// If the normal does not point downward, flip it. Use dot product.
+			double dotProduct = pSurfaceNormal->dot(upVector);
+			if (dotProduct < 0.98)
+			{
+				OpenStudio::Point3dVector^ surfaceVertices = osSurface->vertices();
+				surfaceVertices->Reverse();
+				osSurface->setVertices(surfaceVertices);
+			}
 			osSurface->setOutsideBoundaryCondition("Ground");
 			osSurface->setSurfaceType("RoofCeiling");
 			osSurface->setConstruction(osExteriorRoofType);
 			osSurface->setSunExposure("NoSun");
 			osSurface->setWindExposure("NoWind");
 		}
-		else if ((faceType == 2) && (adjCount > 1))
+		else if ((faceType == FACE_FLOOR) && (adjCount > 1))
 		{
+			//OpenStudio::Vector3d^ downwardVector = gcnew OpenStudio::Vector3d(0, 0, -1.0);
+			//// If the normal does not point downward, flip it. Use dot product.
+			//double dotProduct = pSurfaceNormal->dot(downwardVector);
+			//if (dotProduct < 0.98)
+			//{
+			//	OpenStudio::Point3dVector^ surfaceVertices = osSurface->vertices();
+			//	surfaceVertices->Reverse();
+			//	osSurface->setVertices(surfaceVertices);
+			//}
 			osSurface->setOutsideBoundaryCondition("Surface");
 			osSurface->setSurfaceType("Floor");
 			osSurface->setConstruction(osInteriorFloorType);
 			osSurface->setSunExposure("NoSun");
 			osSurface->setWindExposure("NoWind");
 		}
-		else if ((faceType == 2) && (adjCount < 2))
+		else if ((faceType == FACE_FLOOR) && (adjCount < 2))
 		{
+			OpenStudio::Vector3d^ pSurfaceNormal = osSurface->outwardNormal();
+
+			double x = pSurfaceNormal->x();
+			double y = pSurfaceNormal->y();
+			double z = pSurfaceNormal->z();
+			pSurfaceNormal->normalize();
+			OpenStudio::Vector3d^ downwardVector = gcnew OpenStudio::Vector3d(0, 0, -1.0);
+			// If the normal does not point downward, flip it. Use dot product.
+			double dotProduct = pSurfaceNormal->dot(downwardVector);
+			if (dotProduct < 0.98)
+			{
+				OpenStudio::Point3dVector^ surfaceVertices = osSurface->vertices();
+				surfaceVertices->Reverse();
+				osSurface->setVertices(surfaceVertices);
+			}
 			osSurface->setOutsideBoundaryCondition("Ground");
 			osSurface->setSurfaceType("Floor");
 			osSurface->setConstruction(osExteriorWallType);
 			osSurface->setSunExposure("NoSun");
 			osSurface->setWindExposure("NoWind");
 		}
-		else if ((faceType == 3) && (adjCount > 1))
+		else if ((faceType == FACE_WALL) && (adjCount > 1)) // internal wall
 		{
 			osSurface->setOutsideBoundaryCondition("Surface");
 			osSurface->setSurfaceType("Wall");
@@ -539,7 +685,7 @@ namespace Dsos
 			osSurface->setSunExposure("NoSun");
 			osSurface->setWindExposure("NoWind");
 		}
-		else if ((faceType == 3) && (adjCount < 2) && isUnderground)
+		else if ((faceType == FACE_WALL) && (adjCount < 2) && isUnderground) // external wall underground
 		{
 			osSurface->setOutsideBoundaryCondition("Ground");
 			osSurface->setSurfaceType("Wall");
@@ -547,7 +693,7 @@ namespace Dsos
 			osSurface->setSunExposure("NoSun");
 			osSurface->setWindExposure("NoWind");
 		}
-		else if ((faceType == 3) && (adjCount < 2) && (!isUnderground))
+		else if ((faceType == FACE_WALL) && (adjCount < 2) && (!isUnderground)) // external wall overground
 		{
 			osSurface->setOutsideBoundaryCondition("Outdoors");
 			osSurface->setSurfaceType("Wall");
@@ -592,6 +738,8 @@ namespace Dsos
 					OpenStudio::SubSurface^ osWindowSubSurface = gcnew OpenStudio::SubSurface(osWindowFacePoints, osModel);
 					osWindowSubSurface->setSubSurfaceType("FixedWindow");
 					osWindowSubSurface->setSurface(osSurface);
+					osWindowSubSurface->setName(osSurface->name()->get() + "_SUBSURFACE_" + subsurfaceCounter.ToString());
+					subsurfaceCounter++;
 
 					double grossSubsurfaceArea = osWindowSubSurface->grossArea();
 					double netSubsurfaceArea = osWindowSubSurface->netArea();
@@ -639,14 +787,23 @@ namespace Dsos
 					double netSubsurfaceArea = osWindowSubSurface->netArea();
 					double grossSurfaceArea = osSurface->grossArea();
 					double netSurfaceArea = osSurface->netArea();
-					if(grossSubsurfaceArea > 0.01)
+					if(grossSubsurfaceArea > 0.1)
 					{
 						osWindowSubSurface->setSubSurfaceType("FixedWindow");
 						bool result = osWindowSubSurface->setSurface(osSurface);
+						osWindowSubSurface->setSurface(osSurface);
 						if (result)
 						{
+							osWindowSubSurface->setName(osSurface->name()->get() + "_SUBSURFACE_" + subsurfaceCounter.ToString());
+							subsurfaceCounter++;
 							numOfAppliedApertures++;
 						}
+					}
+					else
+					{
+						String^ name = osWindowSubSurface->name()->get();
+						int a = 0;
+						osWindowSubSurface->remove();
 					}
 				}
 			}
@@ -662,7 +819,9 @@ namespace Dsos
 		Autodesk::DesignScript::Geometry::Point^ faceCenterPoint =
 			safe_cast<Autodesk::DesignScript::Geometry::Point^>(faceCentre->Geometry);
 
-		List<Vertex^>^ vertices = buildingFace->Vertices();
+		Wire^ pApertureWire = buildingFace->OuterBoundary();
+		List<Vertex^>^ vertices = pApertureWire->Vertices();
+		vertices->Reverse();
 
 		double sqrtScaleFactor = Math::Sqrt(scaleFactor);
 		for each(Vertex^ aVertex in vertices)
@@ -738,9 +897,9 @@ namespace Dsos
 		return true;
 	}
 
-	int DsosUtility::FaceType(Face^ buildingFace, Autodesk::DesignScript::Geometry::Vector^ upVector)
+	FaceType DsosUtility::CalculateFaceType(Face^ buildingFace, OpenStudio::Point3dVector^% facePoints, Cell^ buildingSpace, Autodesk::DesignScript::Geometry::Vector^ upVector)
 	{
-		int returnValue = 3;
+		FaceType faceType = FACE_WALL;
 		List<Vertex^>^ vertices = buildingFace->Vertices();
 		Autodesk::DesignScript::Geometry::Point^ p1 =
 			safe_cast<Autodesk::DesignScript::Geometry::Point^>(vertices[0]->Geometry);
@@ -751,15 +910,41 @@ namespace Dsos
 		Autodesk::DesignScript::Geometry::Vector^ dir = (p2->Subtract(p1->AsVector()))->AsVector()->Cross((p3->Subtract(p1->AsVector()))->AsVector());
 		Autodesk::DesignScript::Geometry::Vector^ faceNormal = dir->Normalized();
 		double faceAngle = faceNormal->AngleWithVector(upVector);
-		if (faceAngle < 5.0)
+
+		Autodesk::DesignScript::Geometry::Point^ centerPoint =
+			Autodesk::DesignScript::Geometry::Point::ByCoordinates(
+				(p1->X + p2->X + p3->X) / 3.0,
+				(p1->Y + p2->Y + p3->Y) / 3.0,
+				(p1->Z + p2->Z + p3->Z) / 3.0
+			);
+
+		Autodesk::DesignScript::Geometry::Point^ pDynamoOffsetPoint =
+			dynamic_cast<Autodesk::DesignScript::Geometry::Point^>(centerPoint->Translate(faceNormal->Scale(0.001)));
+		
+		Vertex^ pOffsetVertex = Vertex::ByPoint(pDynamoOffsetPoint);
+
+		if (faceAngle < 5.0 || faceAngle > 175.0)
 		{
-			returnValue = 1;
+			bool isInside = buildingSpace->DoesContain(pOffsetVertex);
+			// The offset vertex has to be false, so if isInside is true, reverse the face.
+
+			if (isInside)
+			{
+				facePoints->Reverse();
+				faceNormal = faceNormal->Reverse();
+				faceAngle = faceNormal->AngleWithVector(upVector);
+			}
+		
+			if (faceAngle < 5.0)
+			{
+				faceType = FACE_ROOFCEILING;
+			}
+			else if (faceAngle > 175.0)
+			{
+				faceType = FACE_FLOOR;
+			}
 		}
-		else if (faceAngle > 175.0)
-		{
-			returnValue = 2;
-		}
-		return returnValue;
+		return faceType;
 	}
 
 	int DsosUtility::AdjacentCellCount(Face^ buildingFace)

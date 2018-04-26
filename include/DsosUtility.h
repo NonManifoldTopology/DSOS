@@ -6,6 +6,13 @@ using namespace TopoLogic;
 
 namespace Dsos
 {
+	enum FaceType
+	{
+		FACE_WALL,
+		FACE_FLOOR,
+		FACE_ROOFCEILING
+	};
+
 	public ref class DsosUtility
 	{
 	public:
@@ -68,6 +75,15 @@ namespace Dsos
 		/// <returns></returns>
 		static Face^ ApplyAperture(Face^ face, Face^ apertureDesign, int numEdgeSamples);
 
+		/// <summary>
+		/// 
+		/// </summary>
+		/// <param name="face"></param>
+		/// <param name="apertureDesign"></param>
+		/// <param name="numEdgeSamples"></param>
+		/// <returns></returns>
+		static Face^ ApplyApertureV2(Face^ face, Face^ apertureDesign, int numEdgeSamples);
+
 	private:
 		DsosUtility() {}
 
@@ -88,6 +104,7 @@ namespace Dsos
 		static OpenStudio::Surface^ AddSurface(
 			int surfaceNumber,
 			Face^ buildingFace,
+			Cell^ buildingSpace,
 			OpenStudio::Point3dVector^ osFacePoints,
 			OpenStudio::Space^ osSpace,
 			OpenStudio::Model^ osModel,
@@ -102,7 +119,7 @@ namespace Dsos
 
 		static bool IsUnderground(Face^ buildingFace);
 
-		static int FaceType(Face^ buildingFace, Autodesk::DesignScript::Geometry::Vector^ upVector);
+		static FaceType CalculateFaceType(Face^ buildingFace, OpenStudio::Point3dVector^% facePoints, Cell^ buildingSpace, Autodesk::DesignScript::Geometry::Vector^ upVector);
 
 		static int AdjacentCellCount(Face^ buildingFace);
 
@@ -138,5 +155,6 @@ namespace Dsos
 
 		static int numOfApertures;
 		static int numOfAppliedApertures;
+		static int subsurfaceCounter;
 	};
 }
