@@ -21,7 +21,7 @@ namespace Dsos
 		/// </summary>
 		/// <param name="osModel"></param>
 		/// <param name="idfPathName"></param>
-		/// <returns></returns>
+		/// <returns name="bool"></returns>
 		static bool CreateIdfFile(OpenStudio::Model^ osModel, String^ idfPathName);
 
 		/// <summary>
@@ -42,7 +42,7 @@ namespace Dsos
 		/// <param name="numFloors"></param>
 		/// <param name="glazingRatio"></param>
 		/// <param name="contextBuildings"></param>
-		/// <returns></returns>
+		/// <returns name="OpenStudio.Model"></returns>
 		static OpenStudio::Model^ BuildOsModel(
 			[Autodesk::DesignScript::Runtime::DefaultArgument("null")] List<Cell^>^ contextBuildings,
 			CellComplex^ buildingCellComplex,
@@ -60,8 +60,21 @@ namespace Dsos
 			double coolingTemp,
 			double heatingTemp);
 
+		/// <summary>
+		/// 
+		/// </summary>
+		/// <param name="strOsmPath"></param>
+		/// <param name="epwPathName"></param>
+		/// <param name="oswPathName"></param>
+		/// <param name="openStudioExePath"></param>
 		static void PerformEnergyAnalysis(String^ strOsmPath, String^ epwPathName, String^ oswPathName, String^ openStudioExePath);
 
+		/// <summary>
+		/// 
+		/// </summary>
+		/// <param name="osModel"></param>
+		/// <param name="osmPathName"></param>
+		/// <returns name="bool"></returns>
 		static bool SaveModel(OpenStudio::Model^ osModel, String^ osmPathName);
 
 		static OpenStudio::Model^ GetModelFromTemplate(String^ osmTemplatePath, String^ epwWeatherPath, String^ ddyPath);
@@ -72,7 +85,7 @@ namespace Dsos
 		/// <param name="face"></param>
 		/// <param name="apertureDesign"></param>
 		/// <param name="numEdgeSamples"></param>
-		/// <returns></returns>
+		/// <returns name="Face"></returns>
 		static Face^ ApplyAperture(Face^ face, Face^ apertureDesign, int numEdgeSamples);
 
 		/// <summary>
@@ -81,7 +94,7 @@ namespace Dsos
 		/// <param name="face"></param>
 		/// <param name="apertureDesign"></param>
 		/// <param name="numEdgeSamples"></param>
-		/// <returns></returns>
+		/// <returns name="Face"></returns>
 		static Face^ ApplyApertureV2(Face^ face, Face^ apertureDesign, int numEdgeSamples);
 
 	private:
